@@ -46,8 +46,10 @@ jobs:
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Ensure gradlew is executable
-        run: chmod +x ./gradlew || true
+            - name: Fix gradlew line endings and make it executable
+        run: |
+          dos2unix ./gradlew || sed -i 's/\r$//' ./gradlew
+          chmod +x ./gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
