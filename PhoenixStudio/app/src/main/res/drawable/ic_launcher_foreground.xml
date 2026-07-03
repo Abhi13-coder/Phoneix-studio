@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Isometric cube glyph, echoing the viewport's default cube+grid scene.
+         Kept within the adaptive icon's ~66dp safe zone centered at (54,54). -->
+    <path
+        android:fillColor="#F2A24E"
+        android:pathData="M54,26 L76,39 L54,52 L32,39 Z" />
+    <path
+        android:fillColor="#B85A1E"
+        android:pathData="M32,39 L54,52 L54,80 L32,67 Z" />
+    <path
+        android:fillColor="#E07A2E"
+        android:pathData="M76,39 L54,52 L54,80 L76,67 Z" />
+</vector>

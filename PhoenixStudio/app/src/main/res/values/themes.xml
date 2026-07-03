@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base.Theme.MaterialComponents.NoActionBar (not a DayNight/DynamicColors
+         variant) is used specifically so this theme does not pick up Material
+         You dynamic color on Android 12+, per the project's UI requirements. -->
+    <style name="Theme.PhoenixStudio" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/editor_accent</item>
+        <item name="colorPrimaryDark">@color/editor_background</item>
+        <item name="colorAccent">@color/editor_accent</item>
+        <item name="android:windowBackground">@color/editor_background</item>
+        <item name="android:statusBarColor">@color/editor_background</item>
+        <item name="android:navigationBarColor">@color/editor_background</item>
+        <item name="android:textColorPrimary">@color/editor_text_primary</item>
+        <item name="android:textColorSecondary">@color/editor_text_secondary</item>
+    </style>
+</resources>

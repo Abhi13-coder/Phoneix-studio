@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Bootstrap-round layout: just the raw viewport plus an FPS readout.
+    The full editor chrome (left project explorer, right inspector, bottom
+    console, top toolbar) is added in the :ui module in a later round; this
+    file will then become the "center panel" content rather than the whole screen.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/editor_background">
+
+    <com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
+        android:id="@+id/viewport"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/fpsLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="4dp"
+        android:background="@color/editor_toolbar"
+        android:textColor="@color/editor_text_primary"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        tools:text="60 FPS"
+        xmlns:tools="http://schemas.android.com/tools" />
+
+</FrameLayout>

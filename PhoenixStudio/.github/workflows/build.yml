@@ -1,0 +1,101 @@
+name: Build Phoenix Studio APK
+
+# Deliberately narrow triggers: this project is on GitHub's free 200
+# min/month CI tier, so we avoid building on every push to every branch.
+# Push to main and manual dispatch only; open a PR without triggering a
+# full build (reviewers can trigger manually via workflow_dispatch if needed).
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug:
+    # No signing secrets needed at all: AGP auto-generates a debug keystore
+    # on the runner and signs with it. This is the job to use if you don't
+    # have a release keystore set up yet — the resulting APK installs fine
+    # on a phone, it's just not suitable for a Play Store release.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+          cache-read-only: false
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-studio-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+  build-release:
+    # Skipped entirely until you've set up the four PHOENIX_* signing
+    # secrets (see README) — no point spending CI minutes on a release
+    # build you can't install yet. Delete this `if:` once you're ready.
+    if: ${{ vars.RELEASE_SIGNING_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # No Gradle wrapper jar is committed to this repo (see settings.gradle.kts
+      # comment). setup-gradle downloads the pinned Gradle distribution itself
+      # and caches it across runs, which is both simpler and faster on the
+      # free-tier runners than bootstrapping the wrapper.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+          cache-read-only: false
+
+      - name: Decode release keystore
+        if: ${{ secrets.PHOENIX_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PHOENIX_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "${{ runner.temp }}/release.keystore"
+
+      - name: Build release APK
+        env:
+          PHOENIX_KEYSTORE_PATH: ${{ secrets.PHOENIX_KEYSTORE_BASE64 != '' && format('{0}/release.keystore', runner.temp) || '' }}
+          PHOENIX_KEYSTORE_PASSWORD: ${{ secrets.PHOENIX_KEYSTORE_PASSWORD }}
+          PHOENIX_KEY_ALIAS: ${{ secrets.PHOENIX_KEY_ALIAS }}
+          PHOENIX_KEY_PASSWORD: ${{ secrets.PHOENIX_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-studio-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
+          if-no-files-found: error
