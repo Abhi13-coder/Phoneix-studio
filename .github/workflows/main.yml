@@ -31,13 +31,13 @@ jobs:
           cache-read-only: false
 
       - name: Build debug APK
+        working-directory: PhoenixStudio
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: phoenix-studio-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: PhoenixStudio/app/build/outputs/apk/debug/*.apk
           retention-days: 14
           if-no-files-found: error
-        
