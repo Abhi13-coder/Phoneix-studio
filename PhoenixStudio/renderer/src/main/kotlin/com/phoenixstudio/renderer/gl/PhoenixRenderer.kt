@@ -11,6 +11,7 @@ import com.phoenixstudio.renderer.mesh.GridMesh
 import com.phoenixstudio.renderer.shader.ShaderProgram
 import com.phoenixstudio.renderer.shader.Shaders
 import com.phoenixstudio.scene.Scene
+import com.phoenixstudio.scene.SceneObject
 import com.phoenixstudio.scene.SceneObjectType
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -31,6 +32,10 @@ private const val TAG = "PhoenixRenderer"
  * visible on the next frame with no other renderer changes needed. If
  * [scene] is null, falls back to drawing a single cube at the origin, so
  * the viewport never regresses to a blank screen while a scene is loading.
+ *
+ * [selectedObject], if set, is drawn in a highlighted color so tap-to-select
+ * (handled by [ViewportTouchController]) has visible feedback even before
+ * the `:ui` module's inspector panel exists.
  */
 class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
 
@@ -38,6 +43,9 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
 
     /** Assign a scene to have the viewport draw its objects; see class doc for fallback behavior. */
     var scene: Scene? = null
+
+    /** The currently tap-selected object, if any; drawn highlighted. Set by [ViewportTouchController]. */
+    var selectedObject: SceneObject? = null
 
     private lateinit var litShader: ShaderProgram
     private lateinit var unlitShader: ShaderProgram
@@ -97,25 +105,31 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
     private fun drawSceneOrFallback(view: Mat4, projection: Mat4) {
         val currentScene = scene
         if (currentScene == null) {
-            drawCube(Mat4.identity(), view, projection)
+            drawCube(Mat4.identity(), view, projection, isSelected = false)
             return
         }
 
         currentScene.forEachObject { obj ->
             if (obj.enabled && obj.type == SceneObjectType.CUBE) {
-                drawCube(obj.worldMatrix(), view, projection)
+                drawCube(obj.worldMatrix(), view, projection, isSelected = obj === selectedObject)
             }
         }
     }
 
-    private fun drawCube(model: Mat4, view: Mat4, projection: Mat4) {
+    private fun drawCube(model: Mat4, view: Mat4, projection: Mat4, isSelected: Boolean) {
         litShader.use()
         litShader.setUniformMat4("uModel", model.values)
         litShader.setUniformMat4("uView", view.values)
         litShader.setUniformMat4("uProjection", projection.values)
-        litShader.setUniformVec3("uBaseColor", 0.85f, 0.45f, 0.2f)
+        if (isSelected) {
+            litShader.setUniformVec3("uBaseColor", 1f, 0.85f, 0.25f)
+        } else {
+            litShader.setUniformVec3("uBaseColor", 0.85f, 0.45f, 0.2f)
+        }
         val lightDir = Vec3(-0.4f, -1f, -0.3f).normalized()
         litShader.setUniformVec3("uLightDirection", lightDir.x, lightDir.y, lightDir.z)
         cubeMesh.draw(litShader)
     }
 }
+
+    
