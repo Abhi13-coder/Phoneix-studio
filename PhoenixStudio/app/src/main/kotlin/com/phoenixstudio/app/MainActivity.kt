@@ -7,8 +7,14 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
 import com.phoenixstudio.core.log.Logger
+import com.phoenixstudio.core.math.Vec3
 import com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
+import com.phoenixstudio.scene.Scene
+import com.phoenixstudio.scene.SceneObject
+import com.phoenixstudio.scene.SceneObjectType
+import com.phoenixstudio.scene.serialization.SceneSerializer
 
 private const val TAG = "MainActivity"
 
@@ -44,6 +50,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         Logger.i(TAG, "Phoenix Studio viewport initialized")
+        runSceneSerializationDemo()
+    }
+
+    /**
+     * Bootstrap-round demo of the `:scene` module: builds a small scene in
+     * memory, serializes it to JSON, parses that JSON back into a new
+     * [Scene], and logs both so `adb logcat -s MainActivity` (or the
+     * on-device log, once the `:ui` console panel exists) shows a real
+     * save/load round trip actually working, not just compiling.
+     *
+     * This scene is not yet connected to the renderer — [viewport] still
+     * draws its own hardcoded cube — that wiring lands once `:renderer`
+     * gains the ability to draw an arbitrary [Scene] instead of one fixed
+     * mesh, which is planned for a following bootstrap round.
+     */
+    private fun runSceneSerializationDemo() {
+        val scene = Scene(name = "Demo Scene")
+        val cube = SceneObject(name = "Cube", type = SceneObjectType.CUBE)
+        cube.transform.position = Vec3(0f, 0.5f, 0f)
+        scene.addRootObject(cube)
+
+        val json = SceneSerializer.toJson(scene)
+        Logger.i(TAG, "Serialized demo scene:\n$json")
+
+        val reloaded = SceneSerializer.fromJson(json)
+        Logger.i(
+            TAG,
+            "Reloaded scene '${reloaded.name}' has ${reloaded.objectCount()} object(s); " +
+                "first object position = ${reloaded.rootObjects.first().transform.position}"
+        )
     }
 
     override fun onResume() {
@@ -60,9 +96,16 @@ class MainActivity : AppCompatActivity() {
      * Hides system bars for a distraction-free editor viewport, matching
      * the "modern, professional, desktop-editor-like" UI requirement even
      * on a small phone screen.
+     *
+     * [WindowCompat.setDecorFitsSystemWindows] with `false` must be called
+     * *before* [WindowInsetsController.hide] on API 30+, or the window
+     * never actually goes edge-to-edge — some OEM skins (MIUI in
+     * particular) then leave a solid status-bar-colored strip on screen
+     * even though the controller reports the bars as hidden.
      */
     private fun enterImmersiveMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.systemBars())
                 controller.systemBarsBehavior =
@@ -81,3 +124,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+        
