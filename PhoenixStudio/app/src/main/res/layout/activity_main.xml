@@ -15,19 +15,19 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
+    d<TextView
         android:id="@+id/fpsLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_margin="12dp"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="4dp"
-        android:background="@color/editor_toolbar"
-        android:textColor="@color/editor_text_primary"
-        android:textSize="12sp"
+        android:layout_margin="24dp"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp"
+        android:background="#FF6A00"
+        android:textColor="#000000"
+        android:textSize="18sp"
+        android:textStyle="bold"
         android:fontFamily="monospace"
-        tools:text="60 FPS"
-        xmlns:tools="http://schemas.android.com/tools" />
+        android:text="-- FPS" />
 
 </FrameLayout>
