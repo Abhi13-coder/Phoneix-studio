@@ -10,6 +10,8 @@ import com.phoenixstudio.renderer.mesh.CubeMesh
 import com.phoenixstudio.renderer.mesh.GridMesh
 import com.phoenixstudio.renderer.shader.ShaderProgram
 import com.phoenixstudio.renderer.shader.Shaders
+import com.phoenixstudio.scene.Scene
+import com.phoenixstudio.scene.SceneObjectType
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -17,15 +19,25 @@ private const val TAG = "PhoenixRenderer"
 
 /**
  * The engine's root [GLSurfaceView.Renderer]. Owns the two shader programs
- * and two meshes the editor currently draws (grid + cube), plus the FPS
- * counter shown by the toolbar. GL resource creation happens in
- * [onSurfaceCreated] only, so a context loss (e.g. app backgrounded and
- * the surface recreated) correctly re-uploads everything rather than
- * touching now-invalid handles.
+ * and the two mesh types the viewport currently knows how to draw (grid +
+ * cube), plus the FPS counter shown by the toolbar. GL resource creation
+ * happens in [onSurfaceCreated] only, so a context loss (e.g. app
+ * backgrounded and the surface recreated) correctly re-uploads everything
+ * rather than touching now-invalid handles.
+ *
+ * Draws from [scene] when one is assigned: every enabled [SceneObjectType.CUBE]
+ * object in the scene is drawn at its [com.phoenixstudio.scene.SceneObject.worldMatrix],
+ * so editing a scene's objects (moving, adding, removing) is immediately
+ * visible on the next frame with no other renderer changes needed. If
+ * [scene] is null, falls back to drawing a single cube at the origin, so
+ * the viewport never regresses to a blank screen while a scene is loading.
  */
 class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
 
     val fpsCounter = FpsCounter()
+
+    /** Assign a scene to have the viewport draw its objects; see class doc for fallback behavior. */
+    var scene: Scene? = null
 
     private lateinit var litShader: ShaderProgram
     private lateinit var unlitShader: ShaderProgram
@@ -68,7 +80,7 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
         val projection = camera.projectionMatrix(aspect)
 
         drawGrid(view, projection)
-        drawCube(view, projection)
+        drawSceneOrFallback(view, projection)
 
         fpsCounter.tick()
         onFrameRendered?.invoke(fpsCounter.currentFps)
@@ -82,9 +94,22 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
         gridMesh.draw(unlitShader)
     }
 
-    private fun drawCube(view: Mat4, projection: Mat4) {
+    private fun drawSceneOrFallback(view: Mat4, projection: Mat4) {
+        val currentScene = scene
+        if (currentScene == null) {
+            drawCube(Mat4.identity(), view, projection)
+            return
+        }
+
+        currentScene.forEachObject { obj ->
+            if (obj.enabled && obj.type == SceneObjectType.CUBE) {
+                drawCube(obj.worldMatrix(), view, projection)
+            }
+        }
+    }
+
+    private fun drawCube(model: Mat4, view: Mat4, projection: Mat4) {
         litShader.use()
-        val model = Mat4.identity()
         litShader.setUniformMat4("uModel", model.values)
         litShader.setUniformMat4("uView", view.values)
         litShader.setUniformMat4("uProjection", projection.values)
