@@ -8,8 +8,8 @@ import com.phoenixstudio.renderer.camera.OrbitCamera
 /**
  * The engine viewport widget: a [GLSurfaceView] requesting an OpenGL ES 3.2
  * context, hosting [PhoenixRenderer], and wired to [ViewportTouchController]
- * for orbit/pan/zoom gestures. This is the class the editor's center panel
- * instantiates directly in its layout XML.
+ * for orbit/pan/zoom gestures plus tap-to-select and drag-to-move. This is
+ * the class the editor's center panel instantiates directly in its layout XML.
  */
 class PhoenixGLSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -25,11 +25,7 @@ class PhoenixGLSurfaceView @JvmOverloads constructor(
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
 
-        val touchController = ViewportTouchController(
-            context = context,
-            camera = camera,
-            onCameraChanged = { /* Continuous render mode already redraws every frame. */ }
-        )
+        val touchController = ViewportTouchController(context = context, renderer = renderer)
         setOnTouchListener(touchController)
     }
 }
