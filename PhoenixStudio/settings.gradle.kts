@@ -25,3 +25,4 @@ rootProject.name = "PhoenixStudio"
 include(":app")
 include(":core")
 include(":renderer")
+include(":scene")
