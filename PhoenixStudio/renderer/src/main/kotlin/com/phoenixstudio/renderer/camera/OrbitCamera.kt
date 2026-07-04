@@ -1,6 +1,7 @@
 package com.phoenixstudio.renderer.camera
 
 import com.phoenixstudio.core.math.Mat4
+import com.phoenixstudio.core.math.Ray
 import com.phoenixstudio.core.math.Vec3
 import kotlin.math.PI
 import kotlin.math.cos
@@ -55,6 +56,40 @@ class OrbitCamera(
 
     fun projectionMatrix(aspectRatio: Float): Mat4 =
         Mat4.perspective(FIELD_OF_VIEW_RADIANS, aspectRatio, NEAR_PLANE, FAR_PLANE)
+
+    /**
+     * Converts a screen-space touch coordinate into a world-space [Ray]
+     * from the camera through that pixel — the standard "unprojection"
+     * technique used for tap-to-select picking. [screenX]/[screenY] are in
+     * pixels with the origin at the top-left (matching Android's
+     * [android.view.MotionEvent] convention), and [viewportWidth]/
+     * [viewportHeight] should be the GL surface's current pixel size.
+     *
+     * Works by unprojecting a single point on the screen ray (at NDC
+     * z = 0, i.e. midway through the depth range) via the inverse
+     * view-projection matrix, then building a ray from the known eye
+     * position through that point — any point along a perspective camera's
+     * view ray for a given pixel lies on the same line as the eye, so one
+     * unprojected point plus the eye is sufficient; no second point at a
+     * different depth is needed.
+     */
+    fun screenPointToRay(
+        screenX: Float,
+        screenY: Float,
+        viewportWidth: Int,
+        viewportHeight: Int
+    ): Ray {
+        val aspect = viewportWidth.toFloat() / viewportHeight.toFloat()
+        val viewProjection = projectionMatrix(aspect) * viewMatrix()
+        val inverseViewProjection = viewProjection.inverse()
+
+        val ndcX = (2f * screenX / viewportWidth) - 1f
+        val ndcY = 1f - (2f * screenY / viewportHeight) // screen Y is top-down; NDC Y is bottom-up
+
+        val worldPoint = inverseViewProjection.transformPointPerspective(Vec3(ndcX, ndcY, 0f))
+        val eye = eyePosition()
+        return Ray(eye, (worldPoint - eye).normalized())
+    }
 
     companion object {
         private const val MIN_ELEVATION = -PI.toFloat() / 2f + 0.05f
