@@ -36,6 +36,95 @@ class Mat4 private constructor(val values: FloatArray) {
         return Vec3(x, y, z)
     }
 
+    /**
+     * Transforms a direction vector (ignores translation) using only the
+     * upper-left 3x3 rotation/scale portion of this matrix. Used to carry a
+     * ray's direction into an object's local space during picking, where
+     * translating a *direction* the same way a *point* is translated would
+     * be meaningless.
+     */
+    fun transformDirection(v: Vec3): Vec3 {
+        val x = values[0] * v.x + values[4] * v.y + values[8] * v.z
+        val y = values[1] * v.x + values[5] * v.y + values[9] * v.z
+        val z = values[2] * v.x + values[6] * v.y + values[10] * v.z
+        return Vec3(x, y, z)
+    }
+
+    /**
+     * Full homogeneous-coordinate transform including the perspective
+     * divide by `w`. [transformPoint] deliberately skips this (and the
+     * matrix's bottom row entirely) since it assumes an affine matrix —
+     * true for every translation/rotation/scale matrix in this engine, but
+     * *not* true for a projection matrix or its inverse. This method exists
+     * specifically for unprojecting a screen-space point back into world
+     * space through the inverse view-projection matrix during ray casting.
+     */
+    fun transformPointPerspective(point: Vec3): Vec3 {
+        val x = values[0] * point.x + values[4] * point.y + values[8] * point.z + values[12]
+        val y = values[1] * point.x + values[5] * point.y + values[9] * point.z + values[13]
+        val z = values[2] * point.x + values[6] * point.y + values[10] * point.z + values[14]
+        val w = values[3] * point.x + values[7] * point.y + values[11] * point.z + values[15]
+        return if (kotlin.math.abs(w) > 1e-6f) Vec3(x / w, y / w, z / w) else Vec3(x, y, z)
+    }
+
+    /**
+     * The inverse of this matrix, computed via Gauss-Jordan elimination on
+     * a 4x8 augmented matrix. General-purpose (works for the perspective
+     * projection matrices needed by ray casting, not just affine ones),
+     * traded deliberately against the extra CPU cost since this is only
+     * called once per touch-drag frame during picking, never in the
+     * per-triangle hot path.
+     *
+     * @throws IllegalStateException if this matrix is singular (not invertible).
+     */
+    fun inverse(): Mat4 {
+        // augmented[row] holds this matrix's row (columns 0..3) followed by
+        // the corresponding identity row (columns 4..7).
+        val augmented = Array(4) { row ->
+            FloatArray(8).also { r ->
+                for (col in 0 until 4) r[col] = values[col * 4 + row]
+                r[4 + row] = 1f
+            }
+        }
+
+        for (pivotIndex in 0 until 4) {
+            var pivotRow = pivotIndex
+            var largest = kotlin.math.abs(augmented[pivotIndex][pivotIndex])
+            for (candidate in (pivotIndex + 1) until 4) {
+                val magnitude = kotlin.math.abs(augmented[candidate][pivotIndex])
+                if (magnitude > largest) {
+                    largest = magnitude
+                    pivotRow = candidate
+                }
+            }
+            check(largest > 1e-8f) { "Mat4.inverse(): matrix is singular and cannot be inverted" }
+
+            if (pivotRow != pivotIndex) {
+                val tmp = augmented[pivotIndex]
+                augmented[pivotIndex] = augmented[pivotRow]
+                augmented[pivotRow] = tmp
+            }
+
+            val pivotValue = augmented[pivotIndex][pivotIndex]
+            for (col in 0 until 8) augmented[pivotIndex][col] /= pivotValue
+
+            for (row in 0 until 4) {
+                if (row == pivotIndex) continue
+                val factor = augmented[row][pivotIndex]
+                if (factor == 0f) continue
+                for (col in 0 until 8) augmented[row][col] -= factor * augmented[pivotIndex][col]
+            }
+        }
+
+        val result = FloatArray(16)
+        for (row in 0 until 4) {
+            for (col in 0 until 4) {
+                result[col * 4 + row] = augmented[row][4 + col]
+            }
+        }
+        return Mat4(result)
+    }
+
     companion object {
 
         /**
@@ -130,4 +219,4 @@ class Mat4 private constructor(val values: FloatArray) {
             )
         }
     }
-}
+}        
