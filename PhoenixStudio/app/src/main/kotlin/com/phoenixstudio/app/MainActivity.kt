@@ -50,36 +50,39 @@ class MainActivity : AppCompatActivity() {
         }
 
         Logger.i(TAG, "Phoenix Studio viewport initialized")
-        runSceneSerializationDemo()
+        buildInitialSceneAndAssignToRenderer()
     }
 
     /**
-     * Bootstrap-round demo of the `:scene` module: builds a small scene in
-     * memory, serializes it to JSON, parses that JSON back into a new
-     * [Scene], and logs both so `adb logcat -s MainActivity` (or the
-     * on-device log, once the `:ui` console panel exists) shows a real
-     * save/load round trip actually working, not just compiling.
+     * Builds a small starter scene, round-trips it through [SceneSerializer]
+     * (proving save/load actually works, not just that it compiles), and
+     * assigns the *reloaded* copy to [PhoenixRenderer.scene] so what's on
+     * screen is genuinely coming from the scene graph + JSON pipeline —
+     * not a hardcoded renderer mesh anymore.
      *
-     * This scene is not yet connected to the renderer — [viewport] still
-     * draws its own hardcoded cube — that wiring lands once `:renderer`
-     * gains the ability to draw an arbitrary [Scene] instead of one fixed
-     * mesh, which is planned for a following bootstrap round.
+     * Two cubes at different positions are used (rather than one, matching
+     * the old hardcoded look) specifically so the change is visually
+     * obvious: if this scene weren't actually driving the renderer, you'd
+     * still see one cube at the origin instead of two side by side.
      */
-    private fun runSceneSerializationDemo() {
-        val scene = Scene(name = "Demo Scene")
-        val cube = SceneObject(name = "Cube", type = SceneObjectType.CUBE)
-        cube.transform.position = Vec3(0f, 0.5f, 0f)
-        scene.addRootObject(cube)
+    private fun buildInitialSceneAndAssignToRenderer() {
+        val scene = Scene(name = "Starter Scene")
+
+        val cubeA = SceneObject(name = "Cube A", type = SceneObjectType.CUBE)
+        cubeA.transform.position = Vec3(-1f, 0.5f, 0f)
+        scene.addRootObject(cubeA)
+
+        val cubeB = SceneObject(name = "Cube B", type = SceneObjectType.CUBE)
+        cubeB.transform.position = Vec3(1.2f, 0.5f, 0.4f)
+        scene.addRootObject(cubeB)
 
         val json = SceneSerializer.toJson(scene)
-        Logger.i(TAG, "Serialized demo scene:\n$json")
+        Logger.i(TAG, "Serialized starter scene:\n$json")
 
         val reloaded = SceneSerializer.fromJson(json)
-        Logger.i(
-            TAG,
-            "Reloaded scene '${reloaded.name}' has ${reloaded.objectCount()} object(s); " +
-                "first object position = ${reloaded.rootObjects.first().transform.position}"
-        )
+        Logger.i(TAG, "Reloaded scene '${reloaded.name}' has ${reloaded.objectCount()} object(s)")
+
+        viewport.renderer.scene = reloaded
     }
 
     override fun onResume() {
@@ -124,4 +127,3 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
-        
