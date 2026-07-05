@@ -157,30 +157,4 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}* [WindowCompat.setDecorFitsSystemWindows] with `false` must be called
-     * *before* [WindowInsetsController.hide] on API 30+, or the window
-     * never actually goes edge-to-edge — some OEM skins (MIUI in
-     * particular) then leave a solid status-bar-colored strip on screen
-     * even though the controller reports the bars as hidden.
-     */
-    private fun enterImmersiveMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.systemBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                )
-        }
-    }
 }
