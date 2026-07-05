@@ -2,10 +2,13 @@ package com.phoenixstudio.app
 
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -50,7 +53,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fpsLabel: TextView
     private lateinit var explorerList: LinearLayout
     private lateinit var inspectorObjectName: TextView
-    private lateinit var inspectorPosition: TextView
+    private lateinit var inspectorPosX: EditText
+    private lateinit var inspectorPosY: EditText
+    private lateinit var inspectorPosZ: EditText
     private lateinit var consoleLog: TextView
     private lateinit var consoleScroll: ScrollView
 
@@ -71,9 +76,13 @@ class MainActivity : AppCompatActivity() {
         fpsLabel = findViewById(R.id.fpsLabel)
         explorerList = findViewById(R.id.explorerList)
         inspectorObjectName = findViewById(R.id.inspectorObjectName)
-        inspectorPosition = findViewById(R.id.inspectorPosition)
+        inspectorPosX = findViewById(R.id.inspectorPosX)
+        inspectorPosY = findViewById(R.id.inspectorPosY)
+        inspectorPosZ = findViewById(R.id.inspectorPosZ)
         consoleLog = findViewById(R.id.consoleLog)
         consoleScroll = findViewById(R.id.consoleScroll)
+
+        setUpPositionFields()
 
         viewport.renderer.onFrameRendered = { fps ->
             // Fires on the GL thread; UI must only be touched from the main thread.
@@ -150,16 +159,85 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Refreshes the inspector panel to reflect [PhoenixGLSurfaceView.renderer]'s current selection. */
+    /**
+     * Refreshes the inspector panel to reflect the current selection.
+     * Each position field is only overwritten if the user isn't currently
+     * typing in it ([EditText.hasFocus] false) — this runs every frame (via
+     * [PhoenixGLSurfaceView]'s frame callback), so without that guard,
+     * typing a new value would be overwritten mid-keystroke by the next
+     * frame's refresh.
+     */
     private fun updateInspector() {
         val selected = viewport.renderer.selectedObject
         if (selected == null) {
             inspectorObjectName.text = "No selection"
-            inspectorPosition.text = ""
-        } else {
-            inspectorObjectName.text = selected.name
-            val p = selected.transform.position
-            inspectorPosition.text = "X: %.2f\nY: %.2f\nZ: %.2f".format(p.x, p.y, p.z)
+            setFieldTextIfUnfocused(inspectorPosX, "")
+            setFieldTextIfUnfocused(inspectorPosY, "")
+            setFieldTextIfUnfocused(inspectorPosZ, "")
+            return
+        }
+
+        inspectorObjectName.text = selected.name
+        val p = selected.transform.position
+        setFieldTextIfUnfocused(inspectorPosX, formatAxisValue(p.x))
+        setFieldTextIfUnfocused(inspectorPosY, formatAxisValue(p.y))
+        setFieldTextIfUnfocused(inspectorPosZ, formatAxisValue(p.z))
+    }
+
+    private fun setFieldTextIfUnfocused(field: EditText, value: String) {
+        if (!field.hasFocus() && field.text.toString() != value) {
+            field.setText(value)
+        }
+    }
+
+    private fun formatAxisValue(value: Float): String = "%.2f".format(value)
+
+    /**
+     * Wires each position [EditText] so typing a new value writes straight
+     * to [PhoenixGLSurfaceView.renderer]'s selected object's transform —
+     * this is what makes the inspector an *editor*, not just a readout.
+     * Invalid/incomplete input (e.g. a lone "-" while typing a negative
+     * number) is ignored rather than applied, since [String.toFloatOrNull]
+     * returns null for it.
+     */
+    private fun setUpPositionFields() {
+        inspectorPosX.addTextChangedListener(axisWatcher { text ->
+            applyAxisEdit(axis = 0, text = text)
+        })
+        inspectorPosY.addTextChangedListener(axisWatcher { text ->
+            applyAxisEdit(axis = 1, text = text)
+        })
+        inspectorPosZ.addTextChangedListener(axisWatcher { text ->
+            applyAxisEdit(axis = 2, text = text)
+        })
+
+        val clearFocusOnDone = TextView.OnEditorActionListener { view, _, _ ->
+            view.clearFocus()
+            false
+        }
+        inspectorPosX.setOnEditorActionListener(clearFocusOnDone)
+        inspectorPosY.setOnEditorActionListener(clearFocusOnDone)
+        inspectorPosZ.setOnEditorActionListener(clearFocusOnDone)
+    }
+
+    private fun axisWatcher(onChanged: (CharSequence?) -> Unit): TextWatcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+        override fun afterTextChanged(s: Editable?) = onChanged(s)
+    }
+
+    /** axis: 0 = X, 1 = Y, 2 = Z. Only applies when the corresponding field actually has focus (i.e. the user is editing it). */
+    private fun applyAxisEdit(axis: Int, text: CharSequence?) {
+        val field = when (axis) { 0 -> inspectorPosX; 1 -> inspectorPosY; else -> inspectorPosZ }
+        if (!field.hasFocus()) return
+
+        val selected = viewport.renderer.selectedObject ?: return
+        val value = text?.toString()?.toFloatOrNull() ?: return
+        val p = selected.transform.position
+        selected.transform.position = when (axis) {
+            0 -> Vec3(value, p.y, p.z)
+            1 -> Vec3(p.x, value, p.z)
+            else -> Vec3(p.x, p.y, value)
         }
     }
 
@@ -247,4 +325,4 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}        
+}             
