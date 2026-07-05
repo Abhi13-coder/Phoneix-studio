@@ -1,33 +1,181 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Bootstrap-round layout: just the raw viewport plus an FPS readout.
-    The full editor chrome (left project explorer, right inspector, bottom
-    console, top toolbar) is added in the :ui module in a later round; this
-    file will then become the "center panel" content rather than the whole screen.
+    The real editor shell: top toolbar, left explorer, center viewport,
+    right inspector, bottom console — matching the project's original
+    "desktop editor, optimized for phones" layout spec.
+
+    Panel sizes are deliberately compact and are a first pass tuned for a
+    ~6" 720p landscape screen; MainActivity populates the explorer/inspector/
+    console content in code (see MainActivity.kt), this file only defines
+    the structure.
 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@color/editor_background">
 
-    <com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
-        android:id="@+id/viewport"
+    <!-- Toolbar -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/editor_toolbar"
+        android:paddingHorizontal="12dp">
 
-    d<TextView
-        android:id="@+id/fpsLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_margin="24dp"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="6dp"
-        android:background="#FF6A00"
-        android:textColor="#000000"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:fontFamily="monospace"
-        android:text="-- FPS" />
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Phoenix Studio"
+            android:textColor="@color/editor_text_primary"
+            android:textStyle="bold"
+            android:textSize="14sp" />
 
-</FrameLayout>
+        <TextView
+            android:id="@+id/fpsLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:background="#FF6A00"
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:text="-- FPS" />
+
+    </LinearLayout>
+
+    <!-- Explorer / Viewport / Inspector row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Explorer (left) -->
+        <LinearLayout
+            android:layout_width="120dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/editor_panel"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="EXPLORER"
+                android:textColor="@color/editor_text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:id="@+id/explorerList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </ScrollView>
+
+        </LinearLayout>
+
+        <!-- Viewport (center) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
+                android:id="@+id/viewport"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        </FrameLayout>
+
+        <!-- Inspector (right) -->
+        <LinearLayout
+            android:layout_width="140dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/editor_panel"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="INSPECTOR"
+                android:textColor="@color/editor_text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/inspectorObjectName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No selection"
+                android:textColor="@color/editor_text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/inspectorPosition"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/editor_text_secondary"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Console (bottom) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="90dp"
+        android:orientation="vertical"
+        android:background="@color/editor_panel"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="4dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CONSOLE"
+            android:textColor="@color/editor_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <ScrollView
+            android:id="@+id/consoleScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/consoleLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/editor_text_secondary"
+                android:textSize="10sp"
+                android:fontFamily="monospace" />
+
+        </ScrollView>
+
+    </LinearLayout>
+
+</LinearLayout>
