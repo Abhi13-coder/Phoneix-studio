@@ -2,9 +2,12 @@ package com.phoenixstudio.app
 
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -20,30 +23,43 @@ import com.phoenixstudio.scene.SceneObjectType
 private const val TAG = "MainActivity"
 private const val SANDBOX_PROJECT_NAME = "Sandbox"
 private const val MAIN_SCENE_FILE_NAME = "Main.json"
+private const val MAX_CONSOLE_LINES = 200
 
 /**
- * Entry point for this bootstrap round of Phoenix Studio.
+ * Entry point for Phoenix Studio, and as of this round, host of the first
+ * real editor shell: toolbar, explorer, viewport, inspector, and console
+ * panels (see `res/layout/activity_main.xml`).
  *
- * Hosts [PhoenixGLSurfaceView] full-screen with a minimal FPS readout.
- * This activity intentionally does not yet contain the editor chrome
- * (project explorer, inspector, console, toolbar) — that arrives with the
- * `:ui` module in a later bootstrap round, at which point this class will
- * host a `MainEditorLayout` instead of the raw viewport directly.
+ * The explorer/inspector/console are wired to *live* data here rather than
+ * being static chrome:
+ *  - Explorer lists [currentScene]'s root objects; tapping one selects it
+ *    in the viewport, the same as tapping it directly in 3D would.
+ *  - Inspector shows the currently selected object's name and position,
+ *    refreshed every frame via the existing [PhoenixGLSurfaceView]
+ *    frame-rendered callback (no renderer changes needed for this).
+ *  - Console mirrors [Logger] output on-device, using the sink hook that's
+ *    existed since the `:core` module's first round.
  *
- * As of this round, the scene shown is loaded from — and saved back to —
- * a real project on disk via [ProjectManager], rather than being rebuilt
- * from scratch on every launch. There is exactly one hardcoded project
- * ("Sandbox") and one scene file ("Main.json") for now; real project
- * creation/selection UI arrives with `:ui`.
+ * None of these panels support *editing* yet (dragging in the viewport is
+ * still the only way to move an object) — that's planned for a following
+ * round once inspector fields become interactive.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewport: PhoenixGLSurfaceView
     private lateinit var fpsLabel: TextView
+    private lateinit var explorerList: LinearLayout
+    private lateinit var inspectorObjectName: TextView
+    private lateinit var inspectorPosition: TextView
+    private lateinit var consoleLog: TextView
+    private lateinit var consoleScroll: ScrollView
 
     private lateinit var projectManager: ProjectManager
     private lateinit var currentProject: Project
     private lateinit var currentScene: Scene
+
+    private val consoleLines = ArrayDeque<String>()
+    private var logSink: ((Logger.Entry) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,20 +69,27 @@ class MainActivity : AppCompatActivity() {
 
         viewport = findViewById(R.id.viewport)
         fpsLabel = findViewById(R.id.fpsLabel)
+        explorerList = findViewById(R.id.explorerList)
+        inspectorObjectName = findViewById(R.id.inspectorObjectName)
+        inspectorPosition = findViewById(R.id.inspectorPosition)
+        consoleLog = findViewById(R.id.consoleLog)
+        consoleScroll = findViewById(R.id.consoleScroll)
 
         viewport.renderer.onFrameRendered = { fps ->
-            // onFrameRendered fires on the GL thread; UI must be touched on
-            // the main thread only.
+            // Fires on the GL thread; UI must only be touched from the main thread.
             runOnUiThread {
                 fpsLabel.text = getString(R.string.fps_label_format, fps)
+                updateInspector()
             }
         }
 
+        setUpConsole()
         Logger.i(TAG, "Phoenix Studio viewport initialized")
 
         projectManager = ProjectManager(this)
         currentProject = projectManager.createProject(SANDBOX_PROJECT_NAME)
         loadOrCreateSceneAndAssignToRenderer()
+        populateExplorer()
     }
 
     /**
@@ -104,6 +127,68 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Fills the explorer panel with one row per root-level object in
+     * [currentScene]. Only root objects for now — child objects will need
+     * an indented/expandable tree once the scene actually uses parenting,
+     * which nothing does yet (see [SceneObject.addChild] in `:scene`).
+     */
+    private fun populateExplorer() {
+        explorerList.removeAllViews()
+        for (obj in currentScene.rootObjects) {
+            val row = TextView(this).apply {
+                text = obj.name
+                textSize = 12f
+                setTextColor(getColorCompat(R.color.editor_text_primary))
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(4, 10, 4, 10)
+                setOnClickListener {
+                    viewport.renderer.selectedObject = obj
+                    updateInspector()
+                }
+            }
+            explorerList.addView(row)
+        }
+    }
+
+    /** Refreshes the inspector panel to reflect [PhoenixGLSurfaceView.renderer]'s current selection. */
+    private fun updateInspector() {
+        val selected = viewport.renderer.selectedObject
+        if (selected == null) {
+            inspectorObjectName.text = "No selection"
+            inspectorPosition.text = ""
+        } else {
+            inspectorObjectName.text = selected.name
+            val p = selected.transform.position
+            inspectorPosition.text = "X: %.2f\nY: %.2f\nZ: %.2f".format(p.x, p.y, p.z)
+        }
+    }
+
+    /**
+     * Mirrors [Logger] output into the on-screen console panel. Uses the
+     * sink hook [Logger] has exposed since its very first round — this is
+     * the first thing to actually consume it.
+     */
+    private fun setUpConsole() {
+        val sink: (Logger.Entry) -> Unit = { entry ->
+            runOnUiThread { appendConsoleLine(entry) }
+        }
+        logSink = Logger.addSink(sink)
+    }
+
+    private fun appendConsoleLine(entry: Logger.Entry) {
+        val line = "[${entry.level}] ${entry.tag}: ${entry.message}"
+        consoleLines.addLast(line)
+        while (consoleLines.size > MAX_CONSOLE_LINES) {
+            consoleLines.removeFirst()
+        }
+        consoleLog.text = consoleLines.joinToString("\n")
+        consoleScroll.post { consoleScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun getColorCompat(colorRes: Int): Int =
+        androidx.core.content.ContextCompat.getColor(this, colorRes)
+
+    /**
      * Writes [currentScene] back to `Main.json` so any changes made during
      * this session — right now, that means any object dragged to a new
      * position via [com.phoenixstudio.renderer.gl.ViewportTouchController] —
@@ -124,6 +209,11 @@ class MainActivity : AppCompatActivity() {
         saveCurrentSceneToDisk()
         viewport.onPause()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        logSink?.let { Logger.removeSink(it) }
+        super.onDestroy()
     }
 
     /**
@@ -157,4 +247,4 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}
+}        
