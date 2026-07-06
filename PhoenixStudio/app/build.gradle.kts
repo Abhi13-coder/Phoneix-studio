@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":scene"))
     implementation(project(":filesystem"))
     implementation(project(":project"))
+    implementation(project(":assets"))
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
