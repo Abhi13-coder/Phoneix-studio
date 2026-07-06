@@ -14,11 +14,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import com.phoenixstudio.assets.obj.ObjParser
 import com.phoenixstudio.core.log.Logger
 import com.phoenixstudio.core.math.Vec3
 import com.phoenixstudio.project.Project
 import com.phoenixstudio.project.ProjectManager
 import com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
+import com.phoenixstudio.renderer.mesh.StaticMesh
 import com.phoenixstudio.scene.Scene
 import com.phoenixstudio.scene.SceneObject
 import com.phoenixstudio.scene.SceneObjectType
@@ -27,6 +29,7 @@ private const val TAG = "MainActivity"
 private const val SANDBOX_PROJECT_NAME = "Sandbox"
 private const val MAIN_SCENE_FILE_NAME = "Main.json"
 private const val MAX_CONSOLE_LINES = 200
+private const val SAMPLE_MODEL_ASSET_PATH = "models/sample_pyramid.obj"
 
 /**
  * Entry point for Phoenix Studio, and as of this round, host of the first
@@ -98,6 +101,7 @@ class MainActivity : AppCompatActivity() {
         projectManager = ProjectManager(this)
         currentProject = projectManager.createProject(SANDBOX_PROJECT_NAME)
         loadOrCreateSceneAndAssignToRenderer()
+        loadSampleModelAsset()
         populateExplorer()
     }
 
@@ -133,6 +137,43 @@ class MainActivity : AppCompatActivity() {
         scene.addRootObject(cubeB)
 
         return scene
+    }
+
+    /**
+     * Reads the bundled sample OBJ from Android assets, parses it via
+     * [ObjParser], and uploads it to the GPU as a [StaticMesh] — the first
+     * real proof that Phoenix Studio can render geometry it didn't have
+     * hand-coded into the renderer.
+     *
+     * GPU upload happens inside [PhoenixGLSurfaceView.queueEvent] rather
+     * than directly here, since [StaticMesh.upload] issues real OpenGL
+     * calls that require a current GL context — one only exists on the
+     * GLSurfaceView's own render thread, never on the UI thread this
+     * function itself runs on.
+     *
+     * Also ensures the scene has one [SceneObjectType.MODEL] object
+     * pointing at this asset, so it's actually visible — but only adds one
+     * if the loaded/saved scene doesn't already have one, so relaunching
+     * the app doesn't keep appending duplicates.
+     */
+    private fun loadSampleModelAsset() {
+        val objText = assets.open(SAMPLE_MODEL_ASSET_PATH).bufferedReader().use { it.readText() }
+        val parsed = ObjParser.parse(objText)
+
+        viewport.queueEvent {
+            val mesh = StaticMesh(parsed.vertexData, parsed.indexData)
+            mesh.upload()
+            viewport.renderer.registerModelMesh(SAMPLE_MODEL_ASSET_PATH, mesh)
+        }
+        Logger.i(TAG, "Parsed '$SAMPLE_MODEL_ASSET_PATH': ${parsed.vertexData.size / 6} vertices")
+
+        val alreadyPresent = currentScene.rootObjects.any { it.modelAssetPath == SAMPLE_MODEL_ASSET_PATH }
+        if (!alreadyPresent) {
+            val modelObject = SceneObject(name = "Sample Model", type = SceneObjectType.MODEL)
+            modelObject.modelAssetPath = SAMPLE_MODEL_ASSET_PATH
+            modelObject.transform.position = Vec3(0f, 0.5f, -1.5f)
+            currentScene.addRootObject(modelObject)
+        }
     }
 
     /**
@@ -325,4 +366,4 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}             
+}              
