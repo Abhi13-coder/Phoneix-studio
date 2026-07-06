@@ -1,7 +1,9 @@
 package com.phoenixstudio.app
 
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -12,11 +14,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import com.phoenixstudio.assets.obj.ObjParser
 import com.phoenixstudio.core.log.Logger
 import com.phoenixstudio.core.math.Vec3
+import com.phoenixstudio.filesystem.PhoenixFileSystem
 import com.phoenixstudio.project.Project
 import com.phoenixstudio.project.ProjectManager
 import com.phoenixstudio.renderer.gl.PhoenixGLSurfaceView
@@ -24,6 +28,7 @@ import com.phoenixstudio.renderer.mesh.StaticMesh
 import com.phoenixstudio.scene.Scene
 import com.phoenixstudio.scene.SceneObject
 import com.phoenixstudio.scene.SceneObjectType
+import java.io.File
 
 private const val TAG = "MainActivity"
 private const val SANDBOX_PROJECT_NAME = "Sandbox"
@@ -65,9 +70,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var projectManager: ProjectManager
     private lateinit var currentProject: Project
     private lateinit var currentScene: Scene
+    private lateinit var fileSystem: PhoenixFileSystem
 
     private val consoleLines = ArrayDeque<String>()
     private var logSink: ((Logger.Entry) -> Unit)? = null
+
+    /**
+     * Launches the system file picker (Storage Access Framework) so the
+     * user can choose a `.obj` file anywhere on their phone — Downloads,
+     * a cloud-synced folder, etc. — without Phoenix Studio ever needing a
+     * broad storage permission; SAF grants access to just the one file
+     * picked. Must be a property, not created lazily inside a click
+     * handler, since [registerForActivityResult] requires being called
+     * before the activity reaches STARTED.
+     */
+    private val openObjDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importModelFromUri(uri)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +104,10 @@ class MainActivity : AppCompatActivity() {
         consoleLog = findViewById(R.id.consoleLog)
         consoleScroll = findViewById(R.id.consoleScroll)
 
+        findViewById<TextView>(R.id.importModelButton).setOnClickListener {
+            openObjDocumentLauncher.launch(arrayOf("*/*"))
+        }
+
         setUpPositionFields()
 
         viewport.renderer.onFrameRendered = { fps ->
@@ -98,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         setUpConsole()
         Logger.i(TAG, "Phoenix Studio viewport initialized")
 
+        fileSystem = PhoenixFileSystem(this)
         projectManager = ProjectManager(this)
         currentProject = projectManager.createProject(SANDBOX_PROJECT_NAME)
         loadOrCreateSceneAndAssignToRenderer()
@@ -140,16 +164,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Reads the bundled sample OBJ from Android assets, parses it via
-     * [ObjParser], and uploads it to the GPU as a [StaticMesh] — the first
-     * real proof that Phoenix Studio can render geometry it didn't have
-     * hand-coded into the renderer.
-     *
-     * GPU upload happens inside [PhoenixGLSurfaceView.queueEvent] rather
-     * than directly here, since [StaticMesh.upload] issues real OpenGL
-     * calls that require a current GL context — one only exists on the
-     * GLSurfaceView's own render thread, never on the UI thread this
-     * function itself runs on.
+     * Reads the bundled sample OBJ from Android assets, parses and
+     * uploads it via [registerObjMesh] — the first real proof that Phoenix
+     * Studio can render geometry it didn't have hand-coded into the
+     * renderer. [importModelFromUri] does the same thing for a
+     * user-picked file, sharing this same underlying registration step.
      *
      * Also ensures the scene has one [SceneObjectType.MODEL] object
      * pointing at this asset, so it's actually visible — but only adds one
@@ -158,14 +177,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun loadSampleModelAsset() {
         val objText = assets.open(SAMPLE_MODEL_ASSET_PATH).bufferedReader().use { it.readText() }
-        val parsed = ObjParser.parse(objText)
-
-        viewport.queueEvent {
-            val mesh = StaticMesh(parsed.vertexData, parsed.indexData)
-            mesh.upload()
-            viewport.renderer.registerModelMesh(SAMPLE_MODEL_ASSET_PATH, mesh)
-        }
-        Logger.i(TAG, "Parsed '$SAMPLE_MODEL_ASSET_PATH': ${parsed.vertexData.size / 6} vertices")
+        registerObjMesh(SAMPLE_MODEL_ASSET_PATH, objText)
 
         val alreadyPresent = currentScene.rootObjects.any { it.modelAssetPath == SAMPLE_MODEL_ASSET_PATH }
         if (!alreadyPresent) {
@@ -174,6 +186,81 @@ class MainActivity : AppCompatActivity() {
             modelObject.transform.position = Vec3(0f, 0.5f, -1.5f)
             currentScene.addRootObject(modelObject)
         }
+    }
+
+    /**
+     * Parses [objText] via [ObjParser] and uploads the result to the GPU as
+     * a [StaticMesh] registered under [assetPath]. GPU upload happens
+     * inside [PhoenixGLSurfaceView.queueEvent] rather than directly here,
+     * since [StaticMesh.upload] issues real OpenGL calls that require a
+     * current GL context — one only exists on the GLSurfaceView's own
+     * render thread, never on the UI thread this function runs on.
+     */
+    private fun registerObjMesh(assetPath: String, objText: String) {
+        val parsed = ObjParser.parse(objText)
+        viewport.queueEvent {
+            val mesh = StaticMesh(parsed.vertexData, parsed.indexData)
+            mesh.upload()
+            viewport.renderer.registerModelMesh(assetPath, mesh)
+        }
+        Logger.i(TAG, "Parsed '$assetPath': ${parsed.vertexData.size / 6} vertices")
+    }
+
+    /**
+     * Handles a file picked via [openObjDocumentLauncher]: reads it (SAF
+     * grants temporary read access to just this one URI, no broader
+     * storage permission needed), copies its contents into this project's
+     * `Models/` folder so it's a real, permanent part of the project
+     * rather than a dangling reference to a file outside Phoenix Studio's
+     * control, then registers and adds it to the scene exactly like the
+     * bundled sample model.
+     *
+     * Only `.obj` files are supported right now — anything else (`.glb`,
+     * `.fbx`, etc.) is rejected with a console message rather than a
+     * crash, since [ObjParser] would otherwise fail confusingly on
+     * completely different file contents.
+     */
+    private fun importModelFromUri(uri: Uri) {
+        val displayName = queryDisplayName(uri) ?: "imported_model.obj"
+        if (!displayName.endsWith(".obj", ignoreCase = true)) {
+            Logger.w(
+                TAG,
+                "Skipped '$displayName': Phoenix Studio can only import Wavefront OBJ (.obj) files right now"
+            )
+            return
+        }
+
+        val objText = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        if (objText == null) {
+            Logger.e(TAG, "Failed to read selected file '$displayName'")
+            return
+        }
+
+        val modelsDir = fileSystem.ensureProjectStructure(currentProject.name).models
+        val destinationFile = File(modelsDir, displayName)
+        destinationFile.writeText(objText)
+
+        val assetPath = destinationFile.absolutePath
+        registerObjMesh(assetPath, objText)
+
+        val modelObject = SceneObject(name = displayName.removeSuffix(".obj"), type = SceneObjectType.MODEL)
+        modelObject.modelAssetPath = assetPath
+        modelObject.transform.position = Vec3(0f, 0.5f, 1.5f)
+        currentScene.addRootObject(modelObject)
+        populateExplorer()
+
+        Logger.i(TAG, "Imported '$displayName' into project '${currentProject.name}'")
+    }
+
+    /** Looks up a content URI's human-readable filename via the standard OpenableColumns query. */
+    private fun queryDisplayName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                return cursor.getString(nameIndex)
+            }
+        }
+        return null
     }
 
     /**
@@ -263,7 +350,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun axisWatcher(onChanged: (CharSequence?) -> Unit): TextWatcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, before: Int, count: Int) = Unit
         override fun afterTextChanged(s: Editable?) = onChanged(s)
     }
 
@@ -366,4 +453,7 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}              
+}
+        
+    
+                   
