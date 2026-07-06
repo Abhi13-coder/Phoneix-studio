@@ -350,7 +350,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun axisWatcher(onChanged: (CharSequence?) -> Unit): TextWatcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-        override fun onTextChanged(s: CharSequence?, before: Int, count: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
         override fun afterTextChanged(s: Editable?) = onChanged(s)
     }
 
@@ -453,7 +453,5 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}
-        
-    
-                   
+}                    
+                    
