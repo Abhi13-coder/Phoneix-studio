@@ -5,12 +5,13 @@ package com.phoenixstudio.scene
  * are pure hierarchy/transform nodes (grouping, pivots) with no geometry —
  * the same role an "Empty" plays in Blender or an empty GameObject in Unity.
  *
- * Deliberately small right now: only the primitives the renderer actually
- * knows how to draw ([CUBE]) plus [EMPTY]. New cases are added here as
- * `:renderer` gains new mesh types, rather than speculatively listing
- * geometry that can't be drawn yet.
+ * [MODEL] objects reference an imported mesh by asset path (see
+ * [SceneObject.modelAssetPath]) rather than embedding geometry directly —
+ * the actual vertex data lives in whatever mesh the renderer has loaded
+ * and registered for that path (see `PhoenixRenderer.registerModelMesh`).
  */
 enum class SceneObjectType {
     EMPTY,
-    CUBE
+    CUBE,
+    MODEL
 }
