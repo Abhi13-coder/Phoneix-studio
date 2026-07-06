@@ -75,8 +75,12 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
         GLES30.glClearColor(0.11f, 0.11f, 0.13f, 1f)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
         GLES30.glDepthFunc(GLES30.GL_LEQUAL)
-        GLES30.glEnable(GLES30.GL_CULL_FACE)
-        GLES30.glCullFace(GLES30.GL_BACK)
+        // Back-face culling intentionally disabled: imported OBJ meshes
+        // (hand-authored or downloaded) can't be guaranteed to have
+        // consistent front-facing winding, and at our current triangle
+        // budgets (thousands, not millions) the cost of drawing back
+        // faces too is negligible. Revisit only if profiling on real
+        // scenes shows this actually matters.
 
         litShader = ShaderProgram(Shaders.LIT_VERTEX_SOURCE, Shaders.LIT_FRAGMENT_SOURCE)
         unlitShader = ShaderProgram(Shaders.UNLIT_VERTEX_SOURCE, Shaders.UNLIT_FRAGMENT_SOURCE)
@@ -170,4 +174,4 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
     fun registerModelMesh(assetPath: String, mesh: StaticMesh) {
         modelMeshes[assetPath] = mesh
     }
-}        
+}                
