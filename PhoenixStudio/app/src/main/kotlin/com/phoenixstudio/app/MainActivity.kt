@@ -198,12 +198,52 @@ class MainActivity : AppCompatActivity() {
      */
     private fun registerObjMesh(assetPath: String, objText: String) {
         val parsed = ObjParser.parse(objText)
+        logBoundingBox(assetPath, parsed.vertexData)
         viewport.queueEvent {
             val mesh = StaticMesh(parsed.vertexData, parsed.indexData)
             mesh.upload()
             viewport.renderer.registerModelMesh(assetPath, mesh)
         }
         Logger.i(TAG, "Parsed '$assetPath': ${parsed.vertexData.size / 6} vertices")
+    }
+
+    /**
+     * Logs the min/max extent of a parsed mesh's positions on each axis —
+     * diagnostic output to catch scale mismatches (a model authored in
+     * centimeters, or at 100x/0.01x the expected size) that would
+     * otherwise just show up as "the model is invisible" with no clue why.
+     */
+    private fun logBoundingBox(assetPath: String, vertexData: FloatArray) {
+        if (vertexData.isEmpty()) return
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var minZ = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE
+        var maxY = Float.MIN_VALUE
+        var maxZ = Float.MIN_VALUE
+
+        var i = 0
+        while (i < vertexData.size) {
+            val x = vertexData[i]
+            val y = vertexData[i + 1]
+            val z = vertexData[i + 2]
+            if (x < minX) minX = x
+            if (y < minY) minY = y
+            if (z < minZ) minZ = z
+            if (x > maxX) maxX = x
+            if (y > maxY) maxY = y
+            if (z > maxZ) maxZ = z
+            i += 6
+        }
+
+        Logger.i(
+            TAG,
+            "Bounding box for '$assetPath': " +
+                "X[%.2f, %.2f] Y[%.2f, %.2f] Z[%.2f, %.2f] (size %.2f x %.2f x %.2f)".format(
+                    minX, maxX, minY, maxY, minZ, maxZ,
+                    maxX - minX, maxY - minY, maxZ - minZ
+                )
+        )
     }
 
     /**
@@ -453,5 +493,5 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}                    
-                    
+}
+        
