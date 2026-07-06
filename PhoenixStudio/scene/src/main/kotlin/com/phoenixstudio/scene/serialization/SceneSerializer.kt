@@ -87,6 +87,7 @@ object SceneSerializer {
         json.put("type", obj.type.name)
         json.put("enabled", obj.enabled)
         json.put("parentId", obj.parent?.id)
+        json.put("modelAssetPath", obj.modelAssetPath)
         json.put("transform", transformToJson(obj.transform))
         return json
     }
@@ -104,7 +105,8 @@ object SceneSerializer {
             name = json.optString("name", "Object"),
             type = type,
             transform = transformFromJson(json.getJSONObject("transform")),
-            enabled = json.optBoolean("enabled", true)
+            enabled = json.optBoolean("enabled", true),
+            modelAssetPath = json.optString("modelAssetPath", "").ifEmpty { null }
         )
     }
 
@@ -136,4 +138,4 @@ object SceneSerializer {
         array.getDouble(2).toFloat(),
         array.getDouble(3).toFloat()
     )
-}
+}        
