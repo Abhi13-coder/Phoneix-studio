@@ -14,12 +14,14 @@ import java.util.UUID
  * hierarchy to render, walk it to draw the explorer tree) are read-heavy
  * and happen every frame or every UI refresh.
  */
-class SceneObject(
+   class SceneObject(
     val id: String = UUID.randomUUID().toString(),
     var name: String,
     var type: SceneObjectType = SceneObjectType.EMPTY,
     val transform: Transform = Transform(),
-    var enabled: Boolean = true
+    var enabled: Boolean = true,
+    /** For [SceneObjectType.MODEL] objects: which imported mesh to draw. Ignored for other types. */
+    var modelAssetPath: String? = null
 ) {
 
     var parent: SceneObject? = null
