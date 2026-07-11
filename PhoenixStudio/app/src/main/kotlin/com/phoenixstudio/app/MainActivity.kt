@@ -36,25 +36,6 @@ private const val MAIN_SCENE_FILE_NAME = "Main.json"
 private const val MAX_CONSOLE_LINES = 200
 private const val SAMPLE_MODEL_ASSET_PATH = "models/sample_pyramid.obj"
 
-/**
- * Entry point for Phoenix Studio, and as of this round, host of the first
- * real editor shell: toolbar, explorer, viewport, inspector, and console
- * panels (see `res/layout/activity_main.xml`).
- *
- * The explorer/inspector/console are wired to *live* data here rather than
- * being static chrome:
- *  - Explorer lists [currentScene]'s root objects; tapping one selects it
- *    in the viewport, the same as tapping it directly in 3D would.
- *  - Inspector shows the currently selected object's name and position,
- *    refreshed every frame via the existing [PhoenixGLSurfaceView]
- *    frame-rendered callback (no renderer changes needed for this).
- *  - Console mirrors [Logger] output on-device, using the sink hook that's
- *    existed since the `:core` module's first round.
- *
- * None of these panels support *editing* yet (dragging in the viewport is
- * still the only way to move an object) — that's planned for a following
- * round once inspector fields become interactive.
- */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewport: PhoenixGLSurfaceView
@@ -75,15 +56,6 @@ class MainActivity : AppCompatActivity() {
     private val consoleLines = ArrayDeque<String>()
     private var logSink: ((Logger.Entry) -> Unit)? = null
 
-    /**
-     * Launches the system file picker (Storage Access Framework) so the
-     * user can choose a `.obj` file anywhere on their phone — Downloads,
-     * a cloud-synced folder, etc. — without Phoenix Studio ever needing a
-     * broad storage permission; SAF grants access to just the one file
-     * picked. Must be a property, not created lazily inside a click
-     * handler, since [registerForActivityResult] requires being called
-     * before the activity reaches STARTED.
-     */
     private val openObjDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importModelFromUri(uri)
     }
@@ -111,7 +83,6 @@ class MainActivity : AppCompatActivity() {
         setUpPositionFields()
 
         viewport.renderer.onFrameRendered = { fps ->
-            // Fires on the GL thread; UI must only be touched from the main thread.
             runOnUiThread {
                 fpsLabel.text = getString(R.string.fps_label_format, fps)
                 updateInspector()
@@ -129,13 +100,6 @@ class MainActivity : AppCompatActivity() {
         populateExplorer()
     }
 
-    /**
-     * Loads "Main.json" from the Sandbox project if it exists on disk
-     * (i.e. this isn't the first launch, or a previous session saved
-     * something), otherwise builds a fresh starter scene. Either way, the
-     * result is assigned to the renderer so it's what actually appears in
-     * the viewport.
-     */
     private fun loadOrCreateSceneAndAssignToRenderer() {
         val loaded = projectManager.loadScene(currentProject, MAIN_SCENE_FILE_NAME)
         if (loaded != null) {
@@ -148,7 +112,6 @@ class MainActivity : AppCompatActivity() {
         viewport.renderer.scene = currentScene
     }
 
-    /** Two cubes at different positions, used only when no saved scene exists yet. */
     private fun buildStarterScene(): Scene {
         val scene = Scene(name = "Starter Scene")
 
@@ -163,18 +126,6 @@ class MainActivity : AppCompatActivity() {
         return scene
     }
 
-    /**
-     * Reads the bundled sample OBJ from Android assets, parses and
-     * uploads it via [registerObjMesh] — the first real proof that Phoenix
-     * Studio can render geometry it didn't have hand-coded into the
-     * renderer. [importModelFromUri] does the same thing for a
-     * user-picked file, sharing this same underlying registration step.
-     *
-     * Also ensures the scene has one [SceneObjectType.MODEL] object
-     * pointing at this asset, so it's actually visible — but only adds one
-     * if the loaded/saved scene doesn't already have one, so relaunching
-     * the app doesn't keep appending duplicates.
-     */
     private fun loadSampleModelAsset() {
         val objText = assets.open(SAMPLE_MODEL_ASSET_PATH).bufferedReader().use { it.readText() }
         registerObjMesh(SAMPLE_MODEL_ASSET_PATH, objText)
@@ -188,14 +139,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Parses [objText] via [ObjParser] and uploads the result to the GPU as
-     * a [StaticMesh] registered under [assetPath]. GPU upload happens
-     * inside [PhoenixGLSurfaceView.queueEvent] rather than directly here,
-     * since [StaticMesh.upload] issues real OpenGL calls that require a
-     * current GL context — one only exists on the GLSurfaceView's own
-     * render thread, never on the UI thread this function runs on.
-     */
     private fun registerObjMesh(assetPath: String, objText: String) {
         val parsed = ObjParser.parse(objText)
         logBoundingBox(assetPath, parsed.vertexData)
@@ -203,16 +146,11 @@ class MainActivity : AppCompatActivity() {
             val mesh = StaticMesh(parsed.vertexData, parsed.indexData)
             mesh.upload()
             viewport.renderer.registerModelMesh(assetPath, mesh)
+            Logger.i(TAG, "GL thread: registered mesh for '$assetPath'")
         }
         Logger.i(TAG, "Parsed '$assetPath': ${parsed.vertexData.size / 6} vertices")
     }
 
-    /**
-     * Logs the min/max extent of a parsed mesh's positions on each axis —
-     * diagnostic output to catch scale mismatches (a model authored in
-     * centimeters, or at 100x/0.01x the expected size) that would
-     * otherwise just show up as "the model is invisible" with no clue why.
-     */
     private fun logBoundingBox(assetPath: String, vertexData: FloatArray) {
         if (vertexData.isEmpty()) return
         var minX = Float.MAX_VALUE
@@ -246,20 +184,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Handles a file picked via [openObjDocumentLauncher]: reads it (SAF
-     * grants temporary read access to just this one URI, no broader
-     * storage permission needed), copies its contents into this project's
-     * `Models/` folder so it's a real, permanent part of the project
-     * rather than a dangling reference to a file outside Phoenix Studio's
-     * control, then registers and adds it to the scene exactly like the
-     * bundled sample model.
-     *
-     * Only `.obj` files are supported right now — anything else (`.glb`,
-     * `.fbx`, etc.) is rejected with a console message rather than a
-     * crash, since [ObjParser] would otherwise fail confusingly on
-     * completely different file contents.
-     */
     private fun importModelFromUri(uri: Uri) {
         val displayName = queryDisplayName(uri) ?: "imported_model.obj"
         if (!displayName.endsWith(".obj", ignoreCase = true)) {
@@ -292,7 +216,6 @@ class MainActivity : AppCompatActivity() {
         Logger.i(TAG, "Imported '$displayName' into project '${currentProject.name}'")
     }
 
-    /** Looks up a content URI's human-readable filename via the standard OpenableColumns query. */
     private fun queryDisplayName(uri: Uri): String? {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -303,12 +226,6 @@ class MainActivity : AppCompatActivity() {
         return null
     }
 
-    /**
-     * Fills the explorer panel with one row per root-level object in
-     * [currentScene]. Only root objects for now — child objects will need
-     * an indented/expandable tree once the scene actually uses parenting,
-     * which nothing does yet (see [SceneObject.addChild] in `:scene`).
-     */
     private fun populateExplorer() {
         explorerList.removeAllViews()
         for (obj in currentScene.rootObjects) {
@@ -327,14 +244,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Refreshes the inspector panel to reflect the current selection.
-     * Each position field is only overwritten if the user isn't currently
-     * typing in it ([EditText.hasFocus] false) — this runs every frame (via
-     * [PhoenixGLSurfaceView]'s frame callback), so without that guard,
-     * typing a new value would be overwritten mid-keystroke by the next
-     * frame's refresh.
-     */
     private fun updateInspector() {
         val selected = viewport.renderer.selectedObject
         if (selected == null) {
@@ -360,14 +269,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatAxisValue(value: Float): String = "%.2f".format(value)
 
-    /**
-     * Wires each position [EditText] so typing a new value writes straight
-     * to [PhoenixGLSurfaceView.renderer]'s selected object's transform —
-     * this is what makes the inspector an *editor*, not just a readout.
-     * Invalid/incomplete input (e.g. a lone "-" while typing a negative
-     * number) is ignored rather than applied, since [String.toFloatOrNull]
-     * returns null for it.
-     */
     private fun setUpPositionFields() {
         inspectorPosX.addTextChangedListener(axisWatcher { text ->
             applyAxisEdit(axis = 0, text = text)
@@ -394,7 +295,6 @@ class MainActivity : AppCompatActivity() {
         override fun afterTextChanged(s: Editable?) = onChanged(s)
     }
 
-    /** axis: 0 = X, 1 = Y, 2 = Z. Only applies when the corresponding field actually has focus (i.e. the user is editing it). */
     private fun applyAxisEdit(axis: Int, text: CharSequence?) {
         val field = when (axis) { 0 -> inspectorPosX; 1 -> inspectorPosY; else -> inspectorPosZ }
         if (!field.hasFocus()) return
@@ -409,11 +309,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Mirrors [Logger] output into the on-screen console panel. Uses the
-     * sink hook [Logger] has exposed since its very first round — this is
-     * the first thing to actually consume it.
-     */
     private fun setUpConsole() {
         val sink: (Logger.Entry) -> Unit = { entry ->
             runOnUiThread { appendConsoleLine(entry) }
@@ -434,12 +329,6 @@ class MainActivity : AppCompatActivity() {
     private fun getColorCompat(colorRes: Int): Int =
         androidx.core.content.ContextCompat.getColor(this, colorRes)
 
-    /**
-     * Writes [currentScene] back to `Main.json` so any changes made during
-     * this session — right now, that means any object dragged to a new
-     * position via [com.phoenixstudio.renderer.gl.ViewportTouchController] —
-     * are still there the next time the app launches.
-     */
     private fun saveCurrentSceneToDisk() {
         if (!::currentScene.isInitialized || !::currentProject.isInitialized) return
         projectManager.saveScene(currentProject, currentScene, MAIN_SCENE_FILE_NAME)
@@ -462,17 +351,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /**
-     * Hides system bars for a distraction-free editor viewport, matching
-     * the "modern, professional, desktop-editor-like" UI requirement even
-     * on a small phone screen.
-     *
-     * [WindowCompat.setDecorFitsSystemWindows] with `false` must be called
-     * *before* [WindowInsetsController.hide] on API 30+, or the window
-     * never actually goes edge-to-edge — some OEM skins (MIUI in
-     * particular) then leave a solid status-bar-colored strip on screen
-     * even though the controller reports the bars as hidden.
-     */
     private fun enterImmersiveMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -493,5 +371,8 @@ class MainActivity : AppCompatActivity() {
                 )
         }
     }
-}
-        
+}                
+
+                
+    
+     
