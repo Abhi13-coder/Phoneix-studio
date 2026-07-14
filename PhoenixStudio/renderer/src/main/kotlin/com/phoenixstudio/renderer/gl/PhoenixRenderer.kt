@@ -19,44 +19,17 @@ import javax.microedition.khronos.opengles.GL10
 
 private const val TAG = "PhoenixRenderer"
 
-/**
- * The engine's root [GLSurfaceView.Renderer]. Owns the two shader programs
- * and the mesh types the viewport currently knows how to draw (grid, cube,
- * and imported models via [StaticMesh]), plus the FPS counter shown by the
- * toolbar. GL resource creation happens in [onSurfaceCreated] only, so a
- * context loss (e.g. app backgrounded and the surface recreated) correctly
- * re-uploads everything rather than touching now-invalid handles.
- *
- * Draws from [scene] when one is assigned: every enabled [SceneObjectType.CUBE]
- * or [SceneObjectType.MODEL] object in the scene is drawn at its
- * [com.phoenixstudio.scene.SceneObject.worldMatrix], so editing a scene's
- * objects (moving, adding, removing) is immediately visible on the next
- * frame with no other renderer changes needed. If [scene] is null, falls
- * back to drawing a single cube at the origin, so the viewport never
- * regresses to a blank screen while a scene is loading.
- *
- * [SceneObjectType.MODEL] objects are drawn by looking up their
- * [SceneObject.modelAssetPath] in [modelMeshes] — a mesh only appears once
- * something has called [registerModelMesh] for that path (parsing an OBJ
- * file and building a [StaticMesh] is the caller's job, e.g.
- * `MainActivity`; this class only knows how to draw a mesh once it has
- * one, not how to obtain one).
- *
- * [selectedObject], if set, is drawn in a highlighted color so tap-to-select
- * (handled by [ViewportTouchController]) has visible feedback even before
- * the `:ui` module's inspector panel exists.
- */
 class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
 
     val fpsCounter = FpsCounter()
 
-    /** Assign a scene to have the viewport draw its objects; see class doc for fallback behavior. */
     var scene: Scene? = null
 
-    /** The currently tap-selected object, if any; drawn highlighted. Set by [ViewportTouchController]. */
     var selectedObject: SceneObject? = null
 
     private val modelMeshes = mutableMapOf<String, StaticMesh>()
+    private val loggedModelDrawPaths = mutableSetOf<String>()
+    private val loggedDrawErrorPaths = mutableSetOf<String>()
 
     private lateinit var litShader: ShaderProgram
     private lateinit var unlitShader: ShaderProgram
@@ -66,7 +39,6 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
     private var surfaceWidth = 1
     private var surfaceHeight = 1
 
-    /** Exposed so the editor UI (FPS label in the toolbar) can poll the latest value each frame. */
     var onFrameRendered: ((fps: Int) -> Unit)? = null
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -75,12 +47,6 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
         GLES30.glClearColor(0.11f, 0.11f, 0.13f, 1f)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
         GLES30.glDepthFunc(GLES30.GL_LEQUAL)
-        // Back-face culling intentionally disabled: imported OBJ meshes
-        // (hand-authored or downloaded) can't be guaranteed to have
-        // consistent front-facing winding, and at our current triangle
-        // budgets (thousands, not millions) the cost of drawing back
-        // faces too is negligible. Revisit only if profiling on real
-        // scenes shows this actually matters.
 
         litShader = ShaderProgram(Shaders.LIT_VERTEX_SOURCE, Shaders.LIT_FRAGMENT_SOURCE)
         unlitShader = ShaderProgram(Shaders.UNLIT_VERTEX_SOURCE, Shaders.UNLIT_FRAGMENT_SOURCE)
@@ -132,20 +98,37 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
                     drawLitMesh(obj.worldMatrix(), view, projection, isSelected) { cubeMesh.draw(it) }
                 }
                 SceneObjectType.MODEL -> {
-                    val mesh = obj.modelAssetPath?.let { modelMeshes[it] }
+                    val path = obj.modelAssetPath
+                    val mesh = path?.let { modelMeshes[it] }
+
+                    if (path != null && path !in loggedModelDrawPaths) {
+                        loggedModelDrawPaths.add(path)
+                        val m = obj.worldMatrix()
+                        Logger.i(
+                            TAG,
+                            "Draw MODEL '$path': meshFound=${mesh != null} enabled=${obj.enabled} " +
+                                "worldPos=(${m.values[12]}, ${m.values[13]}, ${m.values[14]})"
+                        )
+                    }
+
                     if (mesh != null) {
                         drawLitMesh(obj.worldMatrix(), view, projection, isSelected) { mesh.draw(it) }
+                        if (path !in loggedDrawErrorPaths) {
+                            loggedDrawErrorPaths.add(path!!)
+                            val error = GLES30.glGetError()
+                            if (error != GLES30.GL_NO_ERROR) {
+                                Logger.e(TAG, "GL error after drawing MODEL '$path': 0x${Integer.toHexString(error)}")
+                            } else {
+                                Logger.i(TAG, "No GL error after drawing MODEL '$path'")
+                            }
+                        }
                     }
-                    // If the mesh hasn't been registered yet (still loading,
-                    // or load failed), the object is silently skipped this
-                    // frame rather than crashing or drawing a placeholder.
                 }
                 SceneObjectType.EMPTY -> Unit
             }
         }
     }
 
-    /** Sets the standard lit-shader uniforms, then delegates to [drawMesh] to actually issue the draw call for whichever mesh is being rendered. */
     private fun drawLitMesh(model: Mat4, view: Mat4, projection: Mat4, isSelected: Boolean, drawMesh: (ShaderProgram) -> Unit) {
         litShader.use()
         litShader.setUniformMat4("uModel", model.values)
@@ -161,17 +144,7 @@ class PhoenixRenderer(val camera: OrbitCamera) : GLSurfaceView.Renderer {
         drawMesh(litShader)
     }
 
-    /**
-     * Registers an already-[StaticMesh.upload]ed mesh under [assetPath], so
-     * any [SceneObjectType.MODEL] object whose [SceneObject.modelAssetPath]
-     * matches will be drawn using it starting the next frame.
-     *
-     * Must be called from the GL thread (e.g. via
-     * [android.opengl.GLSurfaceView.queueEvent]), since [mesh] is expected
-     * to already have GPU buffers allocated, which requires a current GL
-     * context.
-     */
     fun registerModelMesh(assetPath: String, mesh: StaticMesh) {
         modelMeshes[assetPath] = mesh
     }
-}                
+}            
