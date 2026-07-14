@@ -1,23 +1,13 @@
 package com.phoenixstudio.renderer.mesh
 
 import android.opengl.GLES30
+import com.phoenixstudio.core.log.Logger
 import com.phoenixstudio.renderer.shader.ShaderProgram
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/**
- * A GPU-uploadable mesh built from arbitrary interleaved position(3)+normal(3)
- * vertex data and a matching index buffer — e.g. the output of
- * [com.phoenixstudio.assets.obj.ObjParser], for imported models, as opposed
- * to [CubeMesh]'s hand-authored geometry.
- *
- * Shares the same upload/draw structure as [CubeMesh] (VAO + interleaved
- * VBO + IBO, same attribute layout) — duplicated here rather than
- * refactored into a shared base class for now. Once a third mesh type
- * needs the same logic, extracting a common base becomes worthwhile; with
- * just two, the duplication is small and keeps each class simple to read
- * on its own.
- */
+private const val TAG = "StaticMesh"
+
 class StaticMesh(
     private val vertexData: FloatArray,
     private val indexData: ShortArray
@@ -28,7 +18,6 @@ class StaticMesh(
     private var vao = 0
     private val indexCount = indexData.size
 
-    /** Allocates GPU buffers. Must be called with a current GL context — i.e. via GLSurfaceView.queueEvent, never from the UI thread directly. */
     fun upload() {
         val vertexBuffer = ByteBuffer
             .allocateDirect(vertexData.size * Float.SIZE_BYTES)
@@ -77,6 +66,11 @@ class StaticMesh(
         GLES30.glVertexAttribPointer(NORMAL_ATTRIB_INDEX, 3, GLES30.GL_FLOAT, false, stride, 3 * Float.SIZE_BYTES)
 
         GLES30.glBindVertexArray(0)
+
+        val error = GLES30.glGetError()
+        if (error != GLES30.GL_NO_ERROR) {
+            Logger.e(TAG, "GL error after upload() (vertexCount=${vertexData.size / 6}): 0x${Integer.toHexString(error)}")
+        }
     }
 
     fun draw(shader: ShaderProgram) {
@@ -94,4 +88,4 @@ class StaticMesh(
         private const val POSITION_ATTRIB_INDEX = 0
         private const val NORMAL_ATTRIB_INDEX = 1
     }
-}
+}            
